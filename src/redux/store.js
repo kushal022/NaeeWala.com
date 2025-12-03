@@ -1,6 +1,7 @@
 // src/redux/store.js
 import { configureStore } from '@reduxjs/toolkit';
 import { counterReducer } from './slices/slice';
+import { createWrapper } from 'next-redux-wrapper';
 
 export const store = configureStore({
   reducer: {
@@ -8,4 +9,5 @@ export const store = configureStore({
   },
 });
 
-export default store;
+// export default store;
+export const wrapper = createWrapper(store); // for ssr if needed
