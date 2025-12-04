@@ -30,3 +30,563 @@ components/
   Map.jsx
 server/
   socketServer.js    # if using custom socket server (optional)
+
+
+
+
+Perfect — sab additional features add kar diya jayega. Main abhi **next step** ke taur pe poora implementation plan + ready-to-copy code snippets (backend models, DB connection, auth, core APIs, OTP, Razorpay order, cron reminders, reviews, subscriptions, Google Maps fields, socket flow) de raha hoon — taki turant project start kar sako.
+
+Mai straightforward aur practical rakhunga — har section mein short explanation + code. Copy-paste ready.
+
+# 🔥 Overview — What I'll provide now
+
+1. Environment vars list
+2. Expanded folder structure (features included)
+3. MongoDB models (User, Barber, Service, Appointment, Review, Subscription, OTP)
+4. DB connection helper
+5. Auth (NextAuth credentials + JWT sketch) & OTP flow endpoints
+6. Appointment APIs (book, barber accept/reject, list) + socket events explanation
+7. Razorpay order creation snippet (server) + payment verification sketch
+8. Cron job example for reminders (node-cron)
+9. Google Maps & rating/review flow notes + schema fields
+10. Light/Dark toggle reminder + small frontend snippets (booking form + barber card)
+
+---
+
+# 1) Environment variables (`.env`)
+
+```
+MONGO_URI=your_mongo_connection_string
+NEXTAUTH_SECRET=supersecretvalue
+NEXTAUTH_URL=http://localhost:3000
+
+JWT_SECRET=another_jwt_secret
+
+# OTP (email or SMS)
+SMTP_HOST=smtp.mailtrap.io
+SMTP_PORT=2525
+SMTP_USER=...
+SMTP_PASS=...
+
+TWILIO_SID=...
+TWILIO_TOKEN=...
+TWILIO_FROM=+1234567890
+
+# Razorpay
+RAZORPAY_KEY_ID=rzp_test_xxx
+RAZORPAY_KEY_SECRET=rzp_test_yyy
+
+# Google Maps
+GOOGLE_MAPS_API_KEY=AIza...
+
+# App settings
+FRONTEND_URL=http://localhost:3000
+ADMIN_EMAIL=admin@naai.com
+```
+
+---
+
+# 2) Expanded folder structure
+
+```
+app/
+  (customer)/, (barber)/, (admin)/
+  api/
+    auth/ [...nextauth]/route.js
+    users/ route.js
+    barbers/ route.js
+    services/ route.js
+    appointments/ route.js
+    payments/ route.js
+    otp/ route.js
+lib/
+  dbConnect.js
+  auth.js
+  socket.js
+models/
+  User.js
+  Barber.js
+  Service.js
+  Appointment.js
+  Review.js
+  Subscription.js
+  OTP.js
+jobs/
+  reminders.js
+components/
+  DarkToggle.jsx
+  BarberCard.jsx
+  BookingForm.jsx
+  ReviewForm.jsx
+  Map.jsx
+server/
+  socketServer.js    # if using custom socket server (optional)
+```
+
+---
+
+# 3) Models (Mongoose) — copy/paste
+
+### `lib/dbConnect.js`
+
+```js
+import mongoose from "mongoose";
+
+const MONGO_URI = process.env.MONGO_URI;
+
+if (!MONGO_URI) throw new Error("MONGO_URI is not defined");
+
+let cached = global.mongoose;
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
+export async function dbConnect() {
+  if (cached.conn) return cached.conn;
+  if (!cached.promise) {
+    cached.promise = mongoose.connect(MONGO_URI, {
+      // useNewUrlParser: true, useUnifiedTopology: true
+    }).then((m) => m);
+  }
+  cached.conn = await cached.promise;
+  return cached.conn;
+}
+```
+
+### `models/User.js`
+
+```js
+import mongoose from "mongoose";
+
+const UserSchema = new mongoose.Schema({
+  name: { type: String },
+  email: { type: String, unique: true, required: true },
+  password: { type: String }, // hashed
+  phone: { type: String },
+  role: { type: String, enum: ["customer","barber","admin"], default: "customer" },
+  avatar: String,
+  createdAt: { type: Date, default: Date.now },
+  wallet: { type: Number, default: 0 } // for payments/refunds
+});
+
+export default mongoose.models.User || mongoose.model("User", UserSchema);
+```
+
+### `models/Barber.js`
+
+```js
+import mongoose from "mongoose";
+
+const BarberSchema = new mongoose.Schema({
+  user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  shopName: String,
+  description: String,
+  location: {
+    address: String,
+    city: String,
+    coords: { // for Google Maps / geospatial queries
+      type: { type: String, default: "Point" },
+      coordinates: [Number], // [lng, lat]
+    },
+  },
+  services: [{ type: mongoose.Schema.Types.ObjectId, ref: "Service" }],
+  workingHours: { type: Object }, // { mon: [{from:'09:00',to:'18:00'}], ... }
+  status: { type: String, enum: ["pending","approved","rejected"], default: "pending" },
+  subscription: {
+    plan: { type: mongoose.Schema.Types.ObjectId, ref: "Subscription" },
+    expiresAt: Date
+  },
+  rating: { type: Number, default: 0 },
+  ratingCount: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now }
+});
+
+BarberSchema.index({ "location.coords": "2dsphere" });
+
+export default mongoose.models.Barber || mongoose.model("Barber", BarberSchema);
+```
+
+### `models/Service.js`
+
+```js
+import mongoose from "mongoose";
+
+const ServiceSchema = new mongoose.Schema({
+  barber: { type: mongoose.Schema.Types.ObjectId, ref: "Barber" },
+  title: String,
+  price: Number,
+  durationMinutes: Number,
+  description: String,
+});
+
+export default mongoose.models.Service || mongoose.model("Service", ServiceSchema);
+```
+
+### `models/Appointment.js`
+
+```js
+import mongoose from "mongoose";
+
+const AppointmentSchema = new mongoose.Schema({
+  customer: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  barber: { type: mongoose.Schema.Types.ObjectId, ref: "Barber", required: true },
+  service: { type: mongoose.Schema.Types.ObjectId, ref: "Service" },
+  startAt: { type: Date, required: true },
+  endAt: { type: Date },
+  status: { type: String, enum: ["pending","accepted","rejected","completed","cancelled"], default: "pending" },
+  payment: {
+    amount: Number,
+    method: { type: String, enum: ["razorpay","wallet","none"], default: "none" },
+    razorpayOrderId: String,
+    razorpayPaymentId: String,
+    paid: { type: Boolean, default: false }
+  },
+  createdAt: { type: Date, default: Date.now }
+});
+
+export default mongoose.models.Appointment || mongoose.model("Appointment", AppointmentSchema);
+```
+
+### `models/Review.js`
+
+```js
+import mongoose from "mongoose";
+
+const ReviewSchema = new mongoose.Schema({
+  barber: { type: mongoose.Schema.Types.ObjectId, ref: "Barber" },
+  customer: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  rating: { type: Number, min: 1, max: 5 },
+  comment: String,
+  createdAt: { type: Date, default: Date.now }
+});
+
+export default mongoose.models.Review || mongoose.model("Review", ReviewSchema);
+```
+
+### `models/Subscription.js`
+
+```js
+import mongoose from "mongoose";
+
+const SubscriptionSchema = new mongoose.Schema({
+  name: String,
+  pricePerMonth: Number,
+  features: [String],
+  createdAt: { type: Date, default: Date.now }
+});
+
+export default mongoose.models.Subscription || mongoose.model("Subscription", SubscriptionSchema);
+```
+
+### `models/OTP.js` (for OTP login)
+
+```js
+import mongoose from "mongoose";
+
+const OTPSchema = new mongoose.Schema({
+  phoneOrEmail: { type: String, required: true },
+  code: { type: String, required: true },
+  expiresAt: { type: Date, required: true },
+  used: { type: Boolean, default: false },
+});
+
+export default mongoose.models.OTP || mongoose.model("OTP", OTPSchema);
+```
+
+---
+
+# 4) Auth + OTP flow (high level)
+
+We will support: **email/password** (NextAuth credentials) + **OTP login** (email/sms).
+
+### OTP endpoints (simple)
+
+* `POST /api/otp/send` — body: `{ phoneOrEmail }` → generate 6-digit code, save in OTP model, send via SMTP or Twilio
+* `POST /api/otp/verify` — body: `{ phoneOrEmail, code }` → verify, then create/find user, return JWT or login session
+
+### Example `api/otp/route.js` (send)
+
+```js
+import { dbConnect } from "@/lib/dbConnect";
+import OTP from "@/models/OTP";
+import nodemailer from "nodemailer";
+import crypto from "crypto";
+
+export async function POST(req) {
+  const { phoneOrEmail } = await req.json();
+  await dbConnect();
+  const code = Math.floor(100000 + Math.random()*900000).toString();
+  const expiresAt = new Date(Date.now() + 5*60*1000); // 5 min
+
+  await OTP.create({ phoneOrEmail, code, expiresAt });
+
+  // send via email (nodemailer) or SMS (Twilio) — example email:
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST, port: process.env.SMTP_PORT,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  });
+  await transporter.sendMail({
+    from: "no-reply@naai.com",
+    to: phoneOrEmail,
+    subject: "Your Naai OTP",
+    text: `Your OTP is ${code}. It expires in 5 minutes.`
+  });
+
+  return new Response(JSON.stringify({ ok: true }), { status: 200 });
+}
+```
+
+### Verify endpoint (returns JWT)
+
+```js
+import { dbConnect } from "@/lib/dbConnect";
+import OTP from "@/models/OTP";
+import User from "@/models/User";
+import jwt from "jsonwebtoken";
+
+export async function POST(req) {
+  const { phoneOrEmail, code } = await req.json();
+  await dbConnect();
+  const otp = await OTP.findOne({ phoneOrEmail, code, used: false });
+  if (!otp || otp.expiresAt < new Date()) return new Response(JSON.stringify({ error: "Invalid or expired" }), { status: 400 });
+
+  otp.used = true; await otp.save();
+
+  let user = await User.findOne({ email: phoneOrEmail }) || await User.findOne({ phone: phoneOrEmail });
+  if (!user) {
+    user = await User.create({ email: phoneOrEmail, role: "customer" }); // or phone
+  }
+
+  const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
+  return new Response(JSON.stringify({ token }), { status: 200 });
+}
+```
+
+(If you use NextAuth, you can create a Credentials provider that consumes OTP verification.)
+
+---
+
+# 5) Appointment APIs (core)
+
+### Book appointment — `POST /api/appointments/book`
+
+* Validate barber working hours, overlapping appointments, service duration
+* Create appointment with status `pending`
+* Optionally create Razorpay order if payment required
+* Notify barber via socket + email
+
+Example simplified handler:
+
+```js
+import { dbConnect } from "@/lib/dbConnect";
+import Appointment from "@/models/Appointment";
+import Barber from "@/models/Barber";
+import Service from "@/models/Service";
+
+export async function POST(req) {
+  const { customerId, barberId, serviceId, startAt } = await req.json();
+  await dbConnect();
+
+  const service = await Service.findById(serviceId);
+  if (!service) return new Response(...);
+
+  const start = new Date(startAt);
+  const end = new Date(start.getTime() + service.durationMinutes * 60000);
+
+  // check overlapping appointments
+  const overlapping = await Appointment.findOne({
+    barber: barberId,
+    status: { $in: ["pending","accepted"] },
+    $or: [
+      { startAt: { $lt: end }, endAt: { $gt: start } },
+      // other overlap checks
+    ]
+  });
+
+  if (overlapping) return new Response(JSON.stringify({ error: "Slot not available" }), { status: 409 });
+
+  const appt = await Appointment.create({
+    customer: customerId, barber: barberId, service: serviceId, startAt: start, endAt: end
+  });
+
+  // TODO: create Razorpay order if paid
+  // TODO: emit socket notification to barber
+
+  return new Response(JSON.stringify({ appt }), { status: 201 });
+}
+```
+
+### Accept / Reject — `POST /api/appointments/:id/respond`
+
+Barber sets `status` to `accepted` or `rejected`. On accept: set endAt if not set; emit socket to customer; if payment collected, mark paid.
+
+---
+
+# 6) Real-time notifications (Socket.io)
+
+* Use a socket server (inside Next.js route or separate server)
+* On booking: server emits `appointment:created` to barber room `barber_{barberId}`
+* On accept/reject: emit `appointment:updated` to `customer_{customerId}`
+
+Socket flows:
+
+* Client joins room on login: `socket.emit("join", { userId, role })`
+* Server keeps mapping userId -> socketId.
+
+(If deploying on Vercel, use a separate Node server for socket.io or use Edge-compatible solutions like Pusher/Ably.)
+
+---
+
+# 7) Razorpay integration (server side)
+
+Install `razorpay` npm pkg.
+
+### Create order
+
+```js
+import Razorpay from "razorpay";
+
+const instance = new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
+});
+
+export default async function handler(req, res) {
+  const { amount, currency = "INR", receipt } = req.body;
+  const options = { amount: Math.round(amount * 100), currency, receipt };
+  const order = await instance.orders.create(options);
+  res.json(order);
+}
+```
+
+### Verify payment (webhook or client signature)
+
+* After payment, client sends `razorpay_order_id` and `razorpay_payment_id` to server — verify signature using key_secret.
+* Mark appointment payment.paid = true and store payment ids.
+
+---
+
+# 8) Cron job for reminders (node-cron)
+
+Install `node-cron` and run a small worker (can be in `jobs/reminders.js` run by `pm2` or separate serverless cron).
+
+```js
+import cron from "node-cron";
+import { dbConnect } from "@/lib/dbConnect";
+import Appointment from "@/models/Appointment";
+import nodemailer from "nodemailer";
+
+cron.schedule('*/5 * * * *', async () => { // every 5 minutes
+  await dbConnect();
+  const now = new Date();
+  const in30 = new Date(now.getTime() + 30*60000);
+  const appts = await Appointment.find({ startAt: { $gte: now, $lte: in30 }, status: "accepted" }).populate("customer barber");
+  const transporter = nodemailer.createTransport({ host: process.env.SMTP_HOST, port: process.env.SMTP_PORT, auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS} });
+  for (const a of appts) {
+    // send reminder to customer
+    await transporter.sendMail({ to: a.customer.email, subject: "Appointment Reminder", text: `Your appointment at ${a.startAt}` });
+    // optionally push notification via FCM or socket
+  }
+});
+```
+
+Schedule however you like (daily summary, 1 hour reminder, 30 mins reminder).
+
+---
+
+# 9) Rating & Reviews
+
+* Endpoint `POST /api/reviews` → create review, recalc barber rating (`(rating*count + new)/ (count+1)`)
+* Show average rating on BarberCard
+* Allow customer to leave review only after completed appointment (enforce check).
+
+Example recalculation:
+
+```js
+barber.rating = ((barber.rating * barber.ratingCount) + newRating) / (barber.ratingCount + 1);
+barber.ratingCount += 1;
+await barber.save();
+```
+
+---
+
+# 10) Subscriptions for Barbers
+
+* Create `Subscription` entries (monthly price)
+* When barber purchases: create Razorpay order, on payment success set `barber.subscription.plan` and `expiresAt = now + months`.
+* Use job to check expired subscriptions and change status / limit features if expired.
+
+---
+
+# 11) Google Maps / Location
+
+* Store `location.coords = { type: "Point", coordinates: [lng, lat] }` — we added that.
+* Use Places API on frontend (`/components/Map.jsx`) and `react-google-maps` or `@react-google-maps/api`.
+* Use `Barber.find({ "location.coords": { $near: { $geometry: { type:"Point", coordinates: [lng,lat] }, $maxDistance: 5000 } }})` for location search.
+
+---
+
+# 12) Frontend snippets
+
+### DarkToggle (client)
+
+```jsx
+"use client";
+import { useTheme } from "next-themes";
+
+export default function DarkToggle(){
+  const { theme, setTheme } = useTheme();
+  return <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>Toggle</button>;
+}
+```
+
+### BookingForm (client)
+
+```jsx
+"use client";
+import { useState } from "react";
+
+export default function BookingForm({ barber, service, user }) {
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+
+  async function submit(e){
+    e.preventDefault();
+    const res = await fetch("/api/appointments/book", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ customerId: user.id, barberId: barber._id, serviceId: service._id, startAt: new Date(`${date}T${time}`) })
+    });
+    const data = await res.json();
+    if (res.ok) alert("Requested");
+    else alert(data.error || "Error");
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <input type="date" value={date} onChange={e=>setDate(e.target.value)} required />
+      <input type="time" value={time} onChange={e=>setTime(e.target.value)} required />
+      <button>Book</button>
+    </form>
+  );
+}
+```
+
+---
+
+# 13) Dev / Deployment notes
+
+* For development: run Next.js locally (`next dev`) + run a small node worker for cron (or spawn it inside a Next.js server process when using custom server).
+* For socket.io: prefer separate Node server (Heroku/Render/Port) or use a managed pub/sub (Pusher, Ably).
+* For production: secure env vars, use HTTPS, validate inputs (Zod), rate-limit OTP sends.
+
+---
+
+# 14) Immediate Next Steps (what I'll do for you if you want)
+
+I can now **generate the actual files** (models, api routes, basic UI pages for customer/barber/admin, NextAuth config, OTP endpoints, Razorpay order endpoint, cron job file).
+Since you said “next step pr chalte hai”, I’ll begin by **generating the full backend models + DB helper + OTP + appointment APIs + Razorpay order endpoint** in code form so you can paste into your repo.
+
+I’ll also provide a minimal working Customer booking page + Barber dashboard accept/reject UI and a simple socket server file.
+
+Bol — chalu kar doon?
+(If yes, I’ll paste all those files in next message so you can copy them directly.)
