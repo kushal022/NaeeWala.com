@@ -5,8 +5,7 @@
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -14,24 +13,24 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  name      String?
-  email     String   @unique
-  phone     String?  @unique
-  password  String
-  role      Role     @default(customer)
-  avatar    String?
-  wallet    Float    @default(0)
-  createdAt DateTime @default(now())
+  id              Int      @id @default(autoincrement())
+  name            String?
+  email           String   @unique
+  phone           String?  @unique
+  password        String
+  role            Role     @default(customer)
+  avatar          String?
+  wallet          Float    @default(0)
+  isEmailVerified Boolean  @default(false)
+  isPhoneVerified Boolean  @default(false)
+  createdAt       DateTime @default(now())
 
   // relations
-  // one-to-one: a User can have zero or one Barber profile
-  barber Barber? // Barber holds the foreign key (userId @unique)
-
-  // appointments where the user is the customer
+  barber            Barber? // one-to-one (Barber.userId is unique)
+  address           Address?      @relation("UserAddress", fields: [addressId], references: [id])
+  addressId         Int?          @unique
   appointmentsOwned Appointment[] @relation("customerAppointments")
   reviews           Review[]
-  // optional address for customers can be added if needed (left out for simplicity)
 }
 
 model Address {
@@ -46,80 +45,113 @@ model Address {
   lng       Float
   createdAt DateTime @default(now())
 
-  // No explicit back relations here to keep relations simple.
-  // Barber or User reference Address via addressId on their models.
-  barbers Barber[]
+  user   User?       @relation("UserAddress")
+  barber Barber?     @relation("BarberAddress")
+  shop   BarberShop? @relation("ShopAddress")
 }
 
 model Barber {
-  id Int @id @default(autoincrement())
-
-  // one-to-one -> userId must be unique so one user has at most one barber profile
+  id     Int  @id @default(autoincrement())
   userId Int  @unique
   user   User @relation(fields: [userId], references: [id])
 
-  shopName    String
-  description String?
+  addressId Int?     @unique
+  address   Address? @relation("BarberAddress", fields: [addressId], references: [id])
 
-  // address as optional relation (many barbers could share same Address model if desired)
-  addressId Int?
-  address   Address? @relation(fields: [addressId], references: [id])
+  status Status @default(pending)
 
-  workingHours Json?
-  status       Status @default(pending)
-
-  // many-to-one: many barbers can have the same subscription plan
   subscriptionId Int?
   subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
 
   rating      Float @default(0)
   ratingCount Int   @default(0)
 
-  services  Service[]
-  createdAt DateTime  @default(now())
+  shop       BarberShop?
+  bankDetail Bank?
+  documents  BarberDocument[]
 
-  // appointments where the user is the barber
+  services     Service[]
   appointments Appointment[] @relation("barberAppointments")
   reviews      Review[]
+
+  createdAt DateTime @default(now())
+}
+
+model BarberShop {
+  id       Int    @id @default(autoincrement())
+  barberId Int    @unique
+  barber   Barber @relation(fields: [barberId], references: [id])
+
+  addressId Int?     @unique
+  address   Address? @relation("ShopAddress", fields: [addressId], references: [id])
+
+  shopName    String
+  description String?
+  licenseNo   String? // optional: for govt license
+  shopType    String? // salon / men’s / unisex
+  openingTime String?
+  closingTime String?
+
+  // photos (array of urls)
+  photos String[] // shop interior/exterior
+
+  createdAt DateTime @default(now())
+}
+
+model Bank {
+  id       Int    @id @default(autoincrement())
+  barberId Int    @unique
+  barber   Barber @relation(fields: [barberId], references: [id])
+
+  accountHolderName String?
+  accountNumber     String?
+  ifsc              String?
+  bankName          String?
+  upiId             String? // optional
+  gstNumber         String? @unique
+  aadhaarNumber     String? @unique
+  panNumber         String? @unique
+
+  createdAt DateTime @default(now())
+}
+
+model BarberDocument {
+  id         Int          @id @default(autoincrement())
+  barberId   Int
+  barber     Barber       @relation(fields: [barberId], references: [id])
+  type       DocumentType
+  url        String
+  name       String? // optional original filename
+  uploadedAt DateTime     @default(now())
 }
 
 model Service {
-  id              Int      @id @default(autoincrement())
+  id              Int           @id @default(autoincrement())
   barberId        Int
-  barber          Barber   @relation(fields: [barberId], references: [id])
+  barber          Barber        @relation(fields: [barberId], references: [id])
   title           String
   price           Float
   durationMinutes Int
   description     String?
-  createdAt       DateTime @default(now())
-
-  // opposite relation for Appointment.service
-  appointments Appointment[]
+  createdAt       DateTime      @default(now())
+  appointments    Appointment[]
 }
 
 model Appointment {
-  id Int @id @default(autoincrement())
-
-  customerId Int
-  customer   User @relation("customerAppointments", fields: [customerId], references: [id])
-
-  barberId Int
-  barber   Barber @relation("barberAppointments", fields: [barberId], references: [id])
-
-  serviceId Int?
-  service   Service? @relation(fields: [serviceId], references: [id])
-
-  startAt DateTime
-  endAt   DateTime?
-  status  ApptStatus @default(pending)
-
-  paymentAmount     Float?
-  paymentMethod     String?
-  razorpayOrderId   String?
-  razorpayPaymentId String?
-  paid              Boolean @default(false)
-
-  createdAt DateTime @default(now())
+  id            Int        @id @default(autoincrement())
+  customerId    Int
+  customer      User       @relation("customerAppointments", fields: [customerId], references: [id])
+  barberId      Int
+  barber        Barber     @relation("barberAppointments", fields: [barberId], references: [id])
+  serviceId     Int?
+  service       Service?   @relation(fields: [serviceId], references: [id])
+  startAt       DateTime
+  endAt         DateTime?
+  status        ApptStatus @default(pending)
+  paymentAmount Float?
+  paymentMethod String?
+  paid          Boolean    @default(false)
+  createdAt     DateTime   @default(now())
 }
 
 model Review {
@@ -139,24 +171,24 @@ model Subscription {
   pricePerMonth Float
   features      String[] // PostgreSQL text array
   createdAt     DateTime @default(now())
-
-  // many barbers can have same plan
-  barbers Barber[]
+  barbers       Barber[]
 }
 
 model Otp {
-  id           Int      @id @default(autoincrement())
-  phoneOrEmail String
-  code         String
-  expiresAt    DateTime
-  used         Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  to        String
+  via       OtpVia
+  code      String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 enum Role {
   customer
   barber
   admin
+  superAdmin
 }
 
 enum Status {
@@ -171,4 +203,18 @@ enum ApptStatus {
   rejected
   completed
   cancelled
+}
+
+enum DocumentType {
+  AADHAAR
+  PANCARD
+  GST_CERT
+  SHOP_PHOTO
+  BANK_PROOF
+  OTHER
+}
+
+enum OtpVia {
+  EMAIL
+  SMS
 }
