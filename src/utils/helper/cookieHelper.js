@@ -2,56 +2,48 @@
 import { cookies } from "next/headers";
 import { serialize } from "cookie";
 
+const domain = process.env.COOKIE_DOMAIN || "localhost";
+const secure = process.env.COOKIE_SECURE === "true";
+const httpOnly = process.env.COOKIE_SECURE_HTTP || "true";
+
 //* SET Cookies
-export const setAccessToken = (res, accessToken) => {
+export const setCookie = (res, {name, value, maxAgeSec  }) => {
     return res.cookies.set({
-      name: "accessToken",
-      value: accessToken,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
+      name: name,
+      value: value,
+      httpOnly: httpOnly,
+      secure: secure, // for production : true
+      sameSite: "lax", //or  "lax"
+      // sameSite: "Strict", //or  "lax"
       path: "/",
-      maxAge: 60 * 15, // 15 min
+      domain: domain,
+      maxAge: maxAgeSec
     });
 };
 
-export const setRefreshToken = (res, refreshToken) => {
-    return res.cookies.set({
-      name: "refreshToken",
-      value: refreshToken,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-    });
+//* REMOVE / CLEAR
+export const clearCookie = (res, name = "access_token") => {
+  return res.cookies.set({
+    name,
+    value: '',
+    httpOnly: httpOnly,
+    secure,
+    sameSite: "lax",
+    path: "/",
+    domain,
+    maxAge: 0,
+  })
 }
 
-//* REMOVE
-export const removeRefreshToken = (res) => {
-    return res.cookies.set({
-      name: "refreshToken",
-      value: '',
-      path: "/",
-      maxAge: 0
-    });
-}
-export const removeAccessToken = (res) => {
-    return res.cookies.set({
-      name: "accessToken",
-      value: '',
-      path: "/",
-      maxAge: 0
-    });
-}
-
-//! Get tokens from cookieStore
-export const getAccessToken = () => {
-    const cookieStore = cookies();
-  return cookieStore.get('accessToken');
-};
-
-export const getRefreshToken = () => {
-    const cookieStore = cookies();
-  return cookieStore.get('refreshToken');
+//* Get tokens from cookieStore
+export const getAccessToken = async () => {
+    const cookieStore = await cookies();
+    const c = cookieStore.get('access_token');
+    return c?.value;
+  };
+  
+  export const getRefreshToken = async () => {
+    const cookieStore = await cookies();
+    const c =  cookieStore.get('refresh_token');
+    return c?.value;
 };

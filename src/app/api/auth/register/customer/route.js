@@ -59,7 +59,7 @@ export async function POST(req) {
     console.log(`✔️ ---- Registration successful for ${user.email}`);
 
     return resSend({
-      message: "User registered",
+      message: "User registered successfully",
       user
     },200);
 
