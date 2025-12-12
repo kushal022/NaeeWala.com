@@ -68,7 +68,7 @@ export async function POST(req) {
     const res = resSend({success:true, ok: true, message:"Refresh token rotate success"}, 200);
     setCookie(res,{name:"access_token", value: accessToken, maxAgeSec: Number(process.env.ACCESS_TOKEN_EXPIRES_IN ?? 900)});
     setCookie(res,{name:"refresh_token", value: newRefresh, maxAgeSec: expiresIn});
-    console.log(`✔️ Refresh token reload success for ${user.email} `)
+    console.log(`✔️ Refresh token reload success! `)
     return res;
 
   } catch (err) {
