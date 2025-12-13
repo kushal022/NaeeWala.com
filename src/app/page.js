@@ -1,6 +1,6 @@
 "use client";
 import Counter from "@/components/Counter.jsx";
-import ThemeToggle from "@/components/ThemeToggle";
+import ThemeToggle from "@/components/common/tool/ThemeToggle";
 
 export default function Home() {
   return (

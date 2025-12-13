@@ -3,21 +3,24 @@ import jwt from "jsonwebtoken";
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET; 
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 const JWT_SECRET = process.env.JWT_SECRET;
+const ACCESS_TOKEN_EXPIRES_IN = process.env.ACCESS_TOKEN_EXPIRES_IN ?? 900;
+const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN ?? 60*60*24*7;
+
 
 //^ Generate JWT Token
-export async function generateToken(data) {
-    return jwt.sign(data, JWT_SECRET, { expiresIn: "7d" });
+export async function generateToken(payload) {
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
 }
 
-export const generateAccessToken = (data) => {
-  return jwt.sign(data , ACCESS_TOKEN_SECRET, {
-    expiresIn: '15m', 
+export const generateAccessToken = (payload) => {
+  return jwt.sign(payload , ACCESS_TOKEN_SECRET, {
+    expiresIn: ACCESS_TOKEN_EXPIRES_IN, 
   });
 };
 
-export const generateRefreshToken = (data) => {
-  return jwt.sign(data, REFRESH_TOKEN_SECRET, {
-    expiresIn: '7d', 
+export const generateRefreshToken = (payload) => {
+  return jwt.sign(payload, REFRESH_TOKEN_SECRET, {
+    expiresIn: REFRESH_TOKEN_EXPIRES_IN, 
   });
 };
 
@@ -35,7 +38,7 @@ export const verifyAccessToken = (token) => {
 export const verifyRefreshToken = (token) => {
   try {
     const decoded = jwt.verify(token, REFRESH_TOKEN_SECRET);
-    return decoded; // If valid, return decoded payload (user data)
+    return decoded; // If valid, return decoded payload (user payload)
   } catch (error) {
     throw new Error('Invalid refresh token');
   }

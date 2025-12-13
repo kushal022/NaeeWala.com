@@ -1,0 +1,21 @@
+API:---->
+Add Register (admin / ✔️customer /✔️ barber -> (basic update later))
+Add Login (admin / ✔️customer / ✔️ barber -> (update later))
+Add Logout (admin / ✔️customer / barber)
+Add Google OAuth login?
+Add “auto refresh token ✔️
+Add silent refresh” frontend code?
+Add Private Route Middleware ✔️
+Add role-based middleware (admin / customer / barber)?
+
+
+1️⃣ Barber Dashboard Auth Middleware (protect routes)
+2️⃣ Barber Profile Update API
+3️⃣ Barber Services CRUD (Add / Edit / Delete services)
+4️⃣ Barber Upload Documents (Cloudinary)
+5️⃣ Admin → Approve Barber API
+
+2️⃣ Barber Documents Upload (Cloudinary)
+3️⃣ Barber Approval System (Admin Panel)
+4️⃣ Barber Service CRUD
+5️⃣ Barber Dashboard APIs

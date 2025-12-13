@@ -1,8 +1,8 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ToastContainer } from "react-toastify";
-import ThemeProvider from "@/components/ThemeProvider";
-import ReduxProvider from "@/components/ReduxProvider";
+import ThemeProvider from "@/components/provider/ThemeProvider";
+import ReduxProvider from "@/components/provider/ReduxProvider";
 
 export const metadata = {
   title: "NaeeWala",

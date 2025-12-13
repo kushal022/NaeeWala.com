@@ -1,36 +1,3 @@
-app/
-  (customer)/, (barber)/, (admin)/
-  api/
-    auth/ [...nextauth]/route.js
-    users/ route.js
-    barbers/ route.js
-    services/ route.js
-    appointments/ route.js
-    payments/ route.js
-    otp/ route.js
-lib/
-  dbConnect.js
-  auth.js
-  socket.js
-models/
-  User.js
-  Barber.js
-  Service.js
-  Appointment.js
-  Review.js
-  Subscription.js
-  OTP.js
-jobs/
-  reminders.js
-components/
-  DarkToggle.jsx
-  BarberCard.jsx
-  BookingForm.jsx
-  ReviewForm.jsx
-  Map.jsx
-server/
-  socketServer.js    # if using custom socket server (optional)
-
 
 
 
@@ -590,3 +557,4 @@ I’ll also provide a minimal working Customer booking page + Barber dashboard a
 
 Bol — chalu kar doon?
 (If yes, I’ll paste all those files in next message so you can copy them directly.)
+
