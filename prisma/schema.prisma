@@ -9,58 +9,59 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
+  url      = env("DATABASE_URL")
 }
 
+
+
 model User {
-  id              Int      @id @default(autoincrement())
+  id              Int       @id @default(autoincrement())
   firstName       String?
   lastName        String?
-  email           String   @unique
-  username        String   @unique 
-  phone           String?  @unique
+  email           String    @unique
+  username        String    @unique
+  phone           String?   @unique
   password        String
-  role            Role     @default(customer)
+  role            Role      @default(customer)
   avatar          String?
-  wallet          Float    @default(0)
-  isEmailVerified Boolean  @default(false)
-  isPhoneVerified Boolean  @default(false)
-  createdAt       DateTime @default(now())
+  wallet          Float     @default(0)
+  isEmailVerified Boolean   @default(false)
+  isPhoneVerified Boolean   @default(false)
+  createdAt       DateTime  @default(now())
 
-  // relations
-  barber            Barber? // one-to-one (Barber.userId is unique)
-  address           Address?      @relation("UserAddress", fields: [addressId], references: [id])
-  addressId         Int?          @unique
+  barber            Barber?
+  addressId         Int?     @unique
+  address           Address?  @relation("UserAddress", fields: [addressId], references: [id])
   appointmentsOwned Appointment[] @relation("customerAppointments")
-  reviews           Review[] // one-many
-  sessions          Session[] // one-many relation
-
+  reviews           Review[]
+  sessions          Session[]
 }
 
 model Address {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   street    String
   landmark  String?
   city      String
   state     String
-  country   String   @default("India")
+  country   String     @default("India")
   pincode   String
   lat       Float
   lng       Float
-  createdAt DateTime @default(now())
+  createdAt DateTime   @default(now())
 
-  user   User?       @relation("UserAddress")
-  barber Barber?     @relation("BarberAddress")
-  shop   BarberShop? @relation("ShopAddress")
+  user   User?        @relation("UserAddress")
+  barber Barber?      @relation("BarberAddress")
+  shop   BarberShop?  @relation("ShopAddress")
 }
 
 model Barber {
-  id     Int  @id @default(autoincrement())
-  userId Int  @unique
-  user   User @relation(fields: [userId], references: [id])
+  id       Int     @id @default(autoincrement())
+  userId   Int     @unique
+  user     User    @relation(fields: [userId], references: [id])
 
-  addressId Int?     @unique
-  address   Address? @relation("BarberAddress", fields: [addressId], references: [id])
+  addressId Int?      @unique
+  address   Address?  @relation("BarberAddress", fields: [addressId], references: [id])
 
   status Status @default(pending)
 
@@ -86,18 +87,18 @@ model BarberShop {
   barberId Int    @unique
   barber   Barber @relation(fields: [barberId], references: [id])
 
-  addressId Int?     @unique
-  address   Address? @relation("ShopAddress", fields: [addressId], references: [id])
+  addressId Int?      @unique
+  address   Address?  @relation("ShopAddress", fields: [addressId], references: [id])
 
   shopName    String
   description String?
-  licenseNo   String? // optional: for govt license
-  shopType    String? // salon / men’s / unisex
+  licenseNo   String?
+  shopType    String?
   openingTime String?
   closingTime String?
 
-  // photos (array of urls)
-  photos String[] // shop interior/exterior
+  // MySQL does NOT support arrays → use JSON
+  photos Json?        // instead of String[]
 
   createdAt DateTime @default(now())
 }
@@ -111,10 +112,10 @@ model Bank {
   accountNumber     String?
   ifsc              String?
   bankName          String?
-  upiId             String? // optional
-  gstNumber         String? @unique
-  aadhaarNumber     String? @unique
-  panNumber         String? @unique
+  upiId             String?
+  gstNumber         String?  @unique
+  aadhaarNumber     String?  @unique
+  panNumber         String?  @unique
 
   createdAt DateTime @default(now())
 }
@@ -125,37 +126,37 @@ model BarberDocument {
   barber     Barber       @relation(fields: [barberId], references: [id])
   type       DocumentType
   url        String
-  name       String? // optional original filename
+  name       String?
   uploadedAt DateTime     @default(now())
 }
 
 model Service {
-  id              Int           @id @default(autoincrement())
+  id              Int        @id @default(autoincrement())
   barberId        Int
-  barber          Barber        @relation(fields: [barberId], references: [id])
+  barber          Barber     @relation(fields: [barberId], references: [id])
   title           String
   price           Float
   durationMinutes Int
   description     String?
-  createdAt       DateTime      @default(now())
+  createdAt       DateTime   @default(now())
   appointments    Appointment[]
 }
 
 model Appointment {
-  id            Int        @id @default(autoincrement())
+  id            Int         @id @default(autoincrement())
   customerId    Int
-  customer      User       @relation("customerAppointments", fields: [customerId], references: [id])
+  customer      User        @relation("customerAppointments", fields: [customerId], references: [id])
   barberId      Int
-  barber        Barber     @relation("barberAppointments", fields: [barberId], references: [id])
+  barber        Barber      @relation("barberAppointments", fields: [barberId], references: [id])
   serviceId     Int?
-  service       Service?   @relation(fields: [serviceId], references: [id])
+  service       Service?    @relation(fields: [serviceId], references: [id])
   startAt       DateTime
   endAt         DateTime?
-  status        ApptStatus @default(pending)
+  status        ApptStatus  @default(pending)
   paymentAmount Float?
   paymentMethod String?
-  paid          Boolean    @default(false)
-  createdAt     DateTime   @default(now())
+  paid          Boolean     @default(false)
+  createdAt     DateTime    @default(now())
 }
 
 model Review {
@@ -173,7 +174,10 @@ model Subscription {
   id            Int      @id @default(autoincrement())
   name          String
   pricePerMonth Float
-  features      String[] // PostgreSQL text array
+
+  // MySQL does NOT support arrays → use JSON
+  features      Json?     // instead of String[]
+
   createdAt     DateTime @default(now())
   barbers       Barber[]
 }
@@ -184,8 +188,8 @@ model Otp {
   via       OtpVia
   code      String
   expiresAt DateTime
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  used      Boolean   @default(false)
+  createdAt DateTime  @default(now())
 }
 
 model Session {
@@ -193,14 +197,13 @@ model Session {
   userId       Int
   user         User     @relation(fields: [userId], references: [id])
   refreshToken String   @unique
-  userAgent    String? 
+  userAgent    String?
   ip           String?
   createdAt    DateTime @default(now())
   expiresAt    DateTime
 
   @@index([userId])
 }
-
 
 enum Role {
   customer
