@@ -14,3 +14,8 @@ Add role-based middleware (admin / customer / barber)?
 3️⃣ Barber Services CRUD (Add / Edit / Delete services)
 4️⃣ Barber Upload Documents (Cloudinary)
 5️⃣ Admin → Approve Barber API
+
+2️⃣ Barber Documents Upload (Cloudinary)
+3️⃣ Barber Approval System (Admin Panel)
+4️⃣ Barber Service CRUD
+5️⃣ Barber Dashboard APIs
